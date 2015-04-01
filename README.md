@@ -13,6 +13,7 @@ This is written using Ruby and [DXRuby](http://dxruby.sourceforge.jp/). By coinc
 
 This is under under development...
 
+There is also [Japanese README](README_ja.md).
 
 ## Requirement
 
