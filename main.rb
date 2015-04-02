@@ -19,6 +19,12 @@ FALL_SPEED = 3.0
 #alpha-value per second
 VANISH_SPEED = 5.0
 
+#buttons of game pad
+BUTTONS = [ P_BUTTON0, P_BUTTON1, P_BUTTON2, P_BUTTON3,
+            P_BUTTON4, P_BUTTON5, P_BUTTON6, P_BUTTON7,
+            P_BUTTON8, P_BUTTON9, P_BUTTON10, P_BUTTON11,
+            P_BUTTON12, P_BUTTON13, P_BUTTON14, P_BUTTON15 ]
+
 class Panel
   attr_accessor :x,
                 :y,
@@ -53,7 +59,9 @@ class Panel
   end
   
   def vanish_with?(panel1, panel2)
-    return false unless self.vanishable? && panel1 && panel1.vanishable? && panel2 && panel2.vanishable?
+    return false unless self.vanishable? &&
+                        panel1 && panel1.vanishable? &&
+                        panel2 && panel2.vanishable?
     
     return @color == panel1.color && @color == panel2.color
   end
@@ -134,10 +142,14 @@ class Field
       
       make_sorted_panels
       
-      # check only vertical vanishing, because make_newline checks horizontal vanishing
+      # check only vertical vanishing,
+      # because make_newline checks horizontal vanishing
       (0...PANEL_X).each {|x|
         (0...(PANEL_Y - 2)).each {|y|
-          if @sorted_panels[x][y] && @sorted_panels[x][y].vanish_with?(@sorted_panels[x][y+1], @sorted_panels[x][y+2])
+          panel = @sorted_panels[x][y]
+          above_panel1 = @sorted_panels[x][y+1]
+          above_panel2 = @sorted_panels[x][y+2]
+          if panel && panel.vanish_with?(above_panel1, above_panel2)
             is_lined_without_vanish = false
           end
         }
@@ -154,7 +166,9 @@ class Field
     new_panels = []
     (0...PANEL_X).each {|x|
       panel = Panel.new(x, y, rand(0...COLORS) )
-      while x >= 2 && panel.vanish_with?(new_panels[x-1], new_panels[x-2])
+      left_panel1 = new_panels[x-1]
+      left_panel2 = new_panels[x-2]
+      while x >= 2 && panel.vanish_with?(left_panel1, left_panel2)
         panel = Panel.new(x, y, rand(0...COLORS) )
       end
       new_panels[x] = panel
@@ -318,31 +332,112 @@ class Field
 end
 
 
+
+module Mode
+  module_function #use all funtions in Window.loop
+  
+  def select
+    font = Font.new(16)
+    message = "Ruby de Pon!\n" +
+              "\n" +
+              "*Keyboard*\n" +
+              "Push SPACE to start game\n" +
+              "SPACE => exchange panel\n" +
+              "Z => slide up fast\n" +
+              "Array key => move cursor\n" +
+              "\n" +
+              "*Game pad*\n" +
+              "Push any button of pad\n" +
+              "for button config, and then start"
+    Window.draw_font(10, 100, message, font)
+    
+    return 'main' if Input.key_push?(K_SPACE)
+    
+    BUTTONS.each{|button|
+      return 'pad_config' if Input.pad_push?(button)
+    }
+    
+    return 'select'
+  end
+  
+  def pad_config(step)
+    font = Font.new(16)
+    case step
+    when 0
+      Window.draw_font(10, 100, "Push button for exchange panels", font)
+      BUTTONS.each{|button|
+        if Input.pad_push?(button)
+          Input.set_config(button, K_SPACE)
+          return step + 1
+        end
+      }
+    when 1
+      Window.draw_font(10, 100, "Push button for slide up fast", font)
+      BUTTONS.each{|button|
+        if Input.pad_push?(button)
+          Input.set_config(button, K_Z)
+          return step + 1
+        end
+      }
+    end
+    return step #not configured
+  end
+  
+  def main(field)
+    field.make_sorted_panels
+    
+    field.handle_force_slide
+    field.cursor.handle_move
+    field.handle_exchange
+    
+    field.vanish_panels
+    field.fall_panels
+    field.slide
+    
+    field.panels.each {|panel|
+      panel.draw(field.offset_slide)
+    }
+    field.cursor.draw(field.offset_slide)
+    
+    return (field.continue?) ? 'main' : 'game_over'
+  end
+  
+  def game_over
+    message = "*Game Over*\n" +
+              "\n" +
+              "push SPACE or exchange button\n" +
+              "for start game again"
+    font = Font.new(16)
+    Window.draw_font(10, 100, message, font)
+    return Input.key_push?(K_SPACE) ? 'main' : 'game_over'
+  end
+end
+
 Window.width = WINDOW_X
 Window.height = WINDOW_Y
 #Window.fps = 20 #for debug
 
 field = Field.new
 
+mode = 'select'
+conf_step = 0
+
 Window.loop do
   break if Input.key_push?(K_ESCAPE)
-  unless field.continue?
-    field = Field.new if Input.key_push?(K_SPACE) #restart
-    next
-  end
-
-  field.make_sorted_panels
   
-  field.handle_force_slide
-  field.cursor.handle_move
-  field.handle_exchange
-
-  field.vanish_panels
-  field.fall_panels
-  field.slide
-
-  field.panels.each {|panel|
-    panel.draw(field.offset_slide)
-  }
-  field.cursor.draw(field.offset_slide)
+  case mode
+  when 'select'
+    mode = Mode.select
+    
+  when 'pad_config'
+    conf_step = Mode.pad_config(conf_step)
+    mode = 'main' if conf_step == 2
+    
+  when 'main'
+    mode = Mode.main(field)
+    
+  when 'game_over'
+    mode = Mode.game_over
+    field = Field.new if mode == 'main'
+  end
 end

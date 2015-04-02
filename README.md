@@ -36,13 +36,17 @@ You arrange panels in horizontal or vertical lines of 3 or more with the same co
 
 If a panel reaches top of the field, the game is over.
 
-Keys:
+Keyboard:
 
 * Array keys: The cursor moves
 * `SPACE`: Two panels in the cursor swap
 * `Z`: Panels slide up fast
 * `ESC`: The game ends
 * `SPACE` after the game is over: The game starts again
+
+Game Pad:
+
+* You can configure buttons before starting game
 
 ## License
 
