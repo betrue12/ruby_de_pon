@@ -279,14 +279,10 @@ class Field
     }
     
     @panels.each {|panel|
-      if panel.to_vanish?
-        panel.vanish
-        if panel.vanished?
-          @panels.delete(panel)
-          @sorted_panels[panel.x][panel.y] = nil
-        end
-      end
+      panel.vanish if panel.to_vanish?
+      @sorted_panels[panel.x][panel.y] = nil if panel.vanished?
     }
+    @panels.delete_if{|panel| panel.vanished?}
   end
   
   def fall_panels
