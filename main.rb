@@ -94,6 +94,7 @@ class Panel
   
   def fix
     @is_fixed = true
+    @offset_y = 0.0
   end
   
   def fixed?
@@ -208,11 +209,11 @@ class Field
     
     if panel_l
       panel_l.x += 1 # to right
-      panel_l.unfix unless y <= 0 || (below_panel_r && below_panel_r.fixed?)
+      panel_l.unfix if y > 0 && !(below_panel_r && below_panel_r.fixed?)
     end
     if panel_r
       panel_r.x -= 1 # to left
-      panel_r.unfix unless y <= 0 || (below_panel_l && below_panel_l.fixed?)
+      panel_r.unfix if y > 0 && !(below_panel_l && below_panel_l.fixed?)
     end
     
     
@@ -305,10 +306,7 @@ class Field
           end
           
           below_panel = @sorted_panels[x][panel.y - 1]
-          if panel.y < 1 || (below_panel && below_panel.fixed?)
-            panel.fix
-            panel.offset_y = 0.0
-          end
+          panel.fix if panel.y < 1 || (below_panel && below_panel.fixed?)
         end
       }
     }
