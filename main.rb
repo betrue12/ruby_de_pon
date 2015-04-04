@@ -165,11 +165,13 @@ class Field
   
   def make_newline(y)
     (0...PANEL_X).each {|x|
-      left_panel1 = (x - 1 >= 0) ? @panels[x-1][y] : nil
-      left_panel2 = (x - 2 >= 0) ? @panels[x-2][y] : nil
-      until @panels[x][y] && !@panels[x][y].vanish_with?(left_panel1, left_panel2)
-        @panels[x][y] = Panel.new(x, y, rand(0...COLORS) )
+      panel = Panel.new(x, y, rand(0...COLORS) )
+      left_panel1 = @panels[x-1][y]
+      left_panel2 = @panels[x-2][y]
+      while x >= 2 && panel.color == left_panel1.color && panel.color == left_panel2.color
+        panel = Panel.new(x, y, rand(0...COLORS) )
       end
+      @panels[x][y] = panel
     }
   end
   
