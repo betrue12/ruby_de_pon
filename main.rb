@@ -129,6 +129,44 @@ class Cursor
   end
 end
 
+class Score
+  def initialize
+    @score = 0
+    @messages = []
+    @del_message_count = 1
+    @font = Font.new(16)
+  end
+  
+  def vanish_score(num)
+    @score += num * 10
+  end
+  
+  def combo_bonus(combo)
+    @score += 10 * (2 ** combo)
+    @messages.push(combo.to_s + " combo!")
+  end
+  
+  def many_bonus(num)
+    @score += 20 * num
+    @messages.push(num.to_s + " vanish!")
+  end
+  
+  def age
+    @del_message_count = (@del_message_count + 1) % (60 * 5)
+    if @del_message_count == 0
+      @messages.delete_at(0) if @messages
+    end
+  end
+  
+  def draw
+    str = "Score: " + @score.to_s + "\n\n"
+    @messages.each{|message|
+      str += message + "\n"
+    }
+    Window.draw_font(FIELD_X + 40, 80, str, @font)
+  end
+end
+
 class Field
   attr_accessor :panels,
                 :cursor,
@@ -161,6 +199,7 @@ class Field
     @is_continue = true
     @cursor = Cursor.new((PANEL_X - 1)/2, PANEL_Y/2)
     @is_force_sliding = false
+    @score = Score.new
   end
   
   def make_newline(y)
@@ -244,9 +283,10 @@ class Field
     end
   end
   
-
-  
   def vanish_panels
+    vanish_num_for_score = 0
+    combo_for_score = 1
+    
     (0...PANEL_X).each {|x|
       (1...PANEL_Y).each {|y|
         base = @panels[x][y]
@@ -263,6 +303,7 @@ class Field
               panel.combo = combo
               panel.to_vanish
             }
+            combo_for_score = [combo_for_score, combo].max
           end
         end
         
@@ -277,6 +318,7 @@ class Field
               panel.combo = combo
               panel.to_vanish
             }
+            combo_for_score = [combo_for_score, combo].max
           end
         end
       }
@@ -286,6 +328,10 @@ class Field
       (1...PANEL_Y).each {|y|
         panel = @panels[x][y]
         next unless panel
+        if panel.to_vanish?
+          vanish_num_for_score += 1 unless panel.vanishing?
+          panel.vanish
+        end
         panel.vanish if panel.to_vanish?
         if panel.vanished?
           combo_next = panel.combo + 1
@@ -299,6 +345,11 @@ class Field
         end
       }
     }
+    @score.vanish_score(vanish_num_for_score)
+    @score.combo_bonus(combo_for_score) if combo_for_score > 1
+    @score.many_bonus(vanish_num_for_score) if vanish_num_for_score > 3
+    @score.age
+    
   end
   
   def fall_panels
@@ -338,6 +389,7 @@ class Field
       }
     }
     @cursor.draw(@offset_slide)
+    @score.draw
   end
   
   def die
@@ -352,7 +404,6 @@ class Field
     @is_force_sliding
   end
 end
-
 
 
 module Mode
@@ -430,7 +481,7 @@ module Mode
   end
 end
 
-Window.width = WINDOW_X
+Window.width = WINDOW_X + 200
 Window.height = WINDOW_Y
 #Window.fps = 20 #for debug
 
