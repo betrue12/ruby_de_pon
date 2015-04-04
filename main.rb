@@ -17,7 +17,7 @@ SLIDE_SPEED = 0.3
 FALL_SPEED = 3.0
 
 #alpha-value per second
-VANISH_SPEED = 5.0
+VANISH_SPEED = 3.0
 
 #buttons of game pad
 BUTTONS = [ P_BUTTON0, P_BUTTON1, P_BUTTON2, P_BUTTON3,
