@@ -29,7 +29,8 @@ class Panel
   attr_accessor :x,
                 :y,
                 :color,
-                :offset_y
+                :offset_y,
+                :combo
 
   def initialize(x, y, color)
     @x = x
@@ -42,6 +43,7 @@ class Panel
     @is_vanishing = false
     @offset_y = 0.0
     @alpha = (y > 0) ? 255.0 : 128.0 #dark if below base-line
+    @combo = 1
   end
   
   def lighten
@@ -253,9 +255,12 @@ class Field
           right_panel1 = @panels[x+1][y]
           right_panel2 = @panels[x+2][y]
           if base.vanish_with?(right_panel1, right_panel2)
-            base.to_vanish
-            right_panel1.to_vanish
-            right_panel2.to_vanish
+            vanishing_panels = [base, right_panel1, right_panel2]
+            combo = vanishing_panels.map{|panel| panel.combo }.max
+            vanishing_panels.each{|panel|
+              panel.combo = combo
+              panel.to_vanish
+            }
           end
         end
         
@@ -264,9 +269,12 @@ class Field
           above_panel1 = @panels[x][y+1]
           above_panel2 = @panels[x][y+2]
           if base.vanish_with?(above_panel1, above_panel2)
-            base.to_vanish
-            above_panel1.to_vanish
-            above_panel2.to_vanish
+            vanishing_panels = [base, above_panel1, above_panel2]
+            combo = vanishing_panels.map{|panel| panel.combo }.max
+            vanishing_panels.each{|panel|
+              panel.combo = combo
+              panel.to_vanish
+            }
           end
         end
       }
@@ -277,7 +285,16 @@ class Field
         panel = @panels[x][y]
         next unless panel
         panel.vanish if panel.to_vanish?
-        @panels[x][y] = nil if panel.vanished?
+        if panel.vanished?
+          combo_next = panel.combo + 1
+          above_y = y + 1
+          while @panels[x][above_y] && @panels[x][above_y].fixed? && !@panels[x][above_y].to_vanish?
+            above_panel = @panels[x][above_y]
+            above_panel.combo = [above_panel.combo, combo_next].max
+            above_y += 1
+          end
+          @panels[x][y] = nil
+        end
       }
     }
   end
@@ -290,7 +307,11 @@ class Field
         
         if panel.fixed?
           below_panel = @panels[x][y - 1]
-          panel.unfix unless below_panel && below_panel.fixed?
+          if below_panel && below_panel.fixed?
+            panel.combo = 1
+          else
+            panel.unfix
+          end
         else
           panel.offset_y += FALL_SPEED
           
