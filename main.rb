@@ -142,12 +142,18 @@ class Score
   end
   
   def combo_bonus(combo)
-    @score += 10 * (2 ** combo)
+    @score += (combo > 13) ? 0 : 150 * combo - 250
     @messages.push(combo.to_s + " combo!")
   end
   
   def many_bonus(num)
-    @score += 20 * num
+    if num < 31
+      @score += ((2 * num**2)/10.0).floor * 10
+    elsif num == 31
+      @score += 0
+    else
+      @score += 33000
+    end
     @messages.push(num.to_s + " vanish!")
   end
   
