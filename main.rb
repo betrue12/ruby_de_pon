@@ -116,11 +116,11 @@ class Cursor
     @image = Image.load('./resources/cursor/cursor.png') #width: PANEL_SIZE * 2, height: PANEL_SIZE
   end
   
-  def handle_move
-    @y += 1 if Input.key_push?(K_UP) && @y < PANEL_Y - 1
-    @y -= 1 if Input.key_push?(K_DOWN) && @y > 1
-    @x += 1 if Input.key_push?(K_RIGHT) && @x < PANEL_X - 2
-    @x -= 1 if Input.key_push?(K_LEFT) && @x > 0
+  def handle_move(input_hash)
+    @y += 1 if input_hash[:up] && @y < PANEL_Y - 1
+    @y -= 1 if input_hash[:down] && @y > 1
+    @x += 1 if input_hash[:right] && @x < PANEL_X - 2
+    @x -= 1 if input_hash[:left] && @x > 0
   end
   
   def draw(offset_slide)
@@ -129,7 +129,6 @@ class Cursor
     Window.draw(axis_x , axis_y, @image)
   end
 end
-
 
 class Score
   def initialize
@@ -224,12 +223,10 @@ class Field
   end
   
   def handle_force_slide
-    @is_force_sliding = true if Input.key_down?(K_Z)
+    @is_force_sliding = true
   end
   
   def handle_exchange
-    return unless Input.key_push?(K_SPACE)
-    
     x = @cursor.x
     y = @cursor.y
     panel_l = @panels[x][y]
@@ -466,9 +463,15 @@ module Mode
   end
   
   def main(field)
-    field.handle_force_slide
-    field.cursor.handle_move
-    field.handle_exchange
+    field.handle_force_slide if Input.key_down?(K_Z)
+    
+    input_hash = {:up => Input.key_push?(K_UP),
+                  :down => Input.key_push?(K_DOWN),
+                  :right => Input.key_push?(K_RIGHT),
+                  :left => Input.key_push?(K_LEFT) }
+    field.cursor.handle_move(input_hash)
+    
+    field.handle_exchange if Input.key_push?(K_SPACE)
     
     field.vanish_panels
     field.fall_panels
