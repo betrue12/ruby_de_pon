@@ -19,6 +19,9 @@ FALL_SPEED = 3.0
 #alpha-value per second
 VANISH_SPEED = 3.0
 
+#seconds for COM's one input
+COM_INPUT_CYCLE = 3
+
 #buttons of game pad
 BUTTONS = [ P_BUTTON0, P_BUTTON1, P_BUTTON2, P_BUTTON3,
             P_BUTTON4, P_BUTTON5, P_BUTTON6, P_BUTTON7,
@@ -388,6 +391,19 @@ class Field
     }
   end
   
+  def calc_columns_height
+    columns_height = Array.new(PANEL_X)
+    (0...PANEL_X).each {|x|
+      PANEL_Y.downto(0){|y|
+        if @panels[x][y]
+          columns_height[x] = y
+          break
+        end
+      }
+    }
+    return columns_height
+  end
+  
   def draw_elements
     (0...PANEL_X).each {|x|
       (0...PANEL_Y).each {|y|
@@ -412,6 +428,115 @@ class Field
 end
 
 
+class Brain
+  def initialize
+    @input_queue = []
+    @cycle_count = 0
+    @exchange_queue = []
+  end
+  
+  def dequeue_input(field)
+    @cycle_count = (@cycle_count + 1) % COM_INPUT_CYCLE
+    return nil unless @cycle_count == 0
+    
+    @input_queue = self.make_inputs(field) if @input_queue.length == 0
+    return @input_queue.shift
+  end
+  
+  def make_inputs(field)
+    return [nil] if field.force_sliding?
+
+    columns_height = field.calc_columns_height
+    return [{:force_slide => true}] if columns_height.max < PANEL_Y - 4
+    
+    targets = balance(columns_height) ||
+              try_vanish(field) ||
+              exchange_random(columns_height)
+    
+    return inputs_to_move_and_exchange(field.cursor, targets)
+  end
+  
+  def balance(columns_height)
+    (0...(PANEL_X - 1)).each {|x|
+      two_height = columns_height[x, 2]
+      if (two_height[0] - two_height[1]).abs >= 2
+        return {:x => x, :y => two_height.max}
+      end
+    }
+    return nil
+  end
+  
+  def try_vanish(field)
+    panels = field.panels
+    row_existing_color = Array.new(PANEL_Y){ [] }
+    
+    (1...(PANEL_Y - 2)).each {|y|
+      row_existing_color[y] = (0...PANEL_X).to_a.map{|x| panels[x][y] && panels[x][y].color}.uniq.select{|elem| elem}
+      next if y <= 2
+      three_rows_color = row_existing_color[y] + row_existing_color[y-1] + row_existing_color[y-2]
+      (0...COLORS).each {|color|
+        if three_rows_color.count(color) == 3
+          target_rows = [y - 2, y - 1, y]
+          now_x = target_rows.map{|tmp_y|
+            (0...PANEL_X).each {|x|
+              break x if panels[x][tmp_y] && panels[x][tmp_y].color == color
+            }
+          }
+          base_x = now_x[2]
+          targets = []
+          (now_x.length - 1).times {|i|
+            x = now_x[i]
+            tmp_y = target_rows[i]
+            if x >= base_x
+              (x - 1).downto(base_x){|tmp_x|
+                targets.push({:x => tmp_x, :y => tmp_y})
+              }
+            else
+              x.upto(base_x - 1){|tmp_x|
+                targets.push({:x => tmp_x, :y => tmp_y})
+              }
+            end
+          }
+          return targets
+        end
+      }
+    }
+    return nil
+  end
+  
+  def exchange_random(columns_height)
+    x = rand(0...(PANEL_X - 1))
+    max_y = columns_height[x, 2].max
+    y = rand(0..max_y)
+    return {:x => x, :y => y}
+  end
+  
+  def inputs_to_move_and_exchange(now_cursor, targets)
+    inputs = []
+    prev = {:x => now_cursor.x, :y =>now_cursor.y}
+    targets = [targets] if targets.is_a?(Hash)
+    
+    targets.each{|target|
+      x_dist = target[:x] - prev[:x]
+      y_dist = target[:y] - prev[:y]
+      if x_dist > 0
+        inputs += [{:right => true}] * x_dist
+      else
+        inputs += [{:left => true}] * (-x_dist)
+      end
+      if y_dist > 0
+        inputs += [{:up => true}] * y_dist
+      else
+        inputs += [{:down => true}] * (-y_dist)
+      end
+      inputs += [{:exchange => true}]
+      prev = target
+    }
+    return inputs
+  end
+end
+
+
 module Mode
   module_function #use all funtions in Window.loop
   
@@ -431,6 +556,7 @@ module Mode
     Window.draw_font(10, 100, message, font)
     
     return 'main' if Input.key_push?(K_SPACE)
+    return 'demo' if Input.key_push?(K_Z)
     
     BUTTONS.each{|button|
       return 'pad_config' if Input.pad_push?(button)
@@ -459,27 +585,37 @@ module Mode
         end
       }
     end
-    return step #not configured
+    return step
   end
   
   def main(field)
-    field.handle_force_slide if Input.key_down?(K_Z)
-    
-    input_hash = {:up => Input.key_push?(K_UP),
-                  :down => Input.key_push?(K_DOWN),
-                  :right => Input.key_push?(K_RIGHT),
-                  :left => Input.key_push?(K_LEFT) }
+    input_hash = {:up          => Input.key_push?(K_UP),
+                  :down        => Input.key_push?(K_DOWN),
+                  :right       => Input.key_push?(K_RIGHT),
+                  :left        => Input.key_push?(K_LEFT),
+                  :exchange    => Input.key_push?(K_SPACE),
+                  :force_slide => Input.key_down?(K_Z)      }
+    next_mode = play(field, input_hash)
+    return next_mode
+  end
+  
+  def demo(field, brain)
+    input_hash = brain.dequeue_input(field) || {}
+    next_mode = play(field, input_hash)
+    return next_mode
+  end
+  
+  def play(field, input_hash)
+    field.handle_force_slide if input_hash[:force_slide]
     field.cursor.handle_move(input_hash)
-    
-    field.handle_exchange if Input.key_push?(K_SPACE)
-    
+    field.handle_exchange if input_hash[:exchange]
     field.vanish_panels
     field.fall_panels
     field.slide
     
     field.draw_elements
     
-    return (field.continue?) ? 'main' : 'game_over'
+    return (field.continue?) ? nil : 'game_over'
   end
   
   def game_over
@@ -499,6 +635,7 @@ Window.height = WINDOW_Y
 #Window.fps = 20 #for debug
 
 field = Field.new
+brain = Brain.new
 
 mode = 'select'
 conf_step = 0
@@ -508,17 +645,20 @@ Window.loop do
   
   case mode
   when 'select'
-    mode = Mode.select
+    mode = Mode.select || mode
     
   when 'pad_config'
     conf_step = Mode.pad_config(conf_step)
     mode = 'main' if conf_step == 2
     
   when 'main'
-    mode = Mode.main(field)
-    
+    mode = Mode.main(field) || mode
+  
+  when 'demo'
+    mode = Mode.demo(field, brain) || mode
+  
   when 'game_over'
-    mode = Mode.game_over
+    mode = Mode.game_over || mode
     field = Field.new if mode == 'main'
   end
 end
