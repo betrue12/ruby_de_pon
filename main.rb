@@ -9,7 +9,7 @@ COLORS = 5
 FIELD_X = PANEL_X * PANEL_SIZE
 FIELD_Y = (PANEL_Y - 1) * PANEL_SIZE
 
-WINDOW_X = FIELD_X
+WINDOW_X = FIELD_X + 200
 WINDOW_Y = FIELD_Y
 
 #pixel per second
@@ -105,6 +105,7 @@ class Panel
   
 end
 
+
 class Cursor
   attr_accessor :x,
                 :y
@@ -128,6 +129,7 @@ class Cursor
     Window.draw(axis_x , axis_y, @image)
   end
 end
+
 
 class Score
   def initialize
@@ -172,6 +174,7 @@ class Score
     Window.draw_font(FIELD_X + 40, 80, str, @font)
   end
 end
+
 
 class Field
   attr_accessor :panels,
@@ -487,7 +490,8 @@ module Mode
   end
 end
 
-Window.width = WINDOW_X + 200
+
+Window.width = WINDOW_X
 Window.height = WINDOW_Y
 #Window.fps = 20 #for debug
 
