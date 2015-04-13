@@ -1,6 +1,18 @@
 Lint/NonLocalExitFromIterator:
   Enabled: false
 
+Lint/UnderscorePrefixedVariableName:
+  Enabled: false
+
+Metrics/MethodLength:
+  Max: 20
+
+Style/BracesAroundHashParameters:
+  Enabled: false
+
+Style/Documentation:
+  Enabled: false
+
 Style/GuardClause:
   Enabled: false
 

@@ -39,8 +39,7 @@ class Panel
     @x = x
     @y = y # 0: under bottom, 1:bottom
     @color = color # integer
-    file_name = color.to_s + '.png'
-    @image = Image.load('./resources/panel/' + file_name) # PANEL_SIZE * PANEL_SIZE
+    @image = Image.load('./resources/panel/' + color.to_s + '.png')
     @is_to_vanish = false
     @is_fixed = true
     @is_vanishing = false
@@ -114,7 +113,7 @@ class Cursor
   def initialize(x, y)
     @x = x
     @y = y
-    @image = Image.load('./resources/cursor/cursor.png') # width: PANEL_SIZE * 2, height: PANEL_SIZE
+    @image = Image.load('./resources/cursor/cursor.png')
   end
 
   def handle_move(input_hash)
@@ -179,6 +178,15 @@ class Field
                 :offset_slide
 
   def initialize
+    @panels = fill_init_panels
+    @offset_slide = 0.0
+    @is_continue = true
+    @cursor = Cursor.new((PANEL_X - 1) / 2, PANEL_Y / 2)
+    @is_force_sliding = false
+    @score = Score.new
+  end
+
+  def fill_init_panels
     is_lined_without_vanish = false
     until is_lined_without_vanish
       @panels = Array.new(PANEL_X) { Array.new(PANEL_Y) }
@@ -196,16 +204,12 @@ class Field
           above_panel2 = @panels[x][y + 2]
           if panel && panel.vanish_with?(above_panel1, above_panel2)
             is_lined_without_vanish = false
+            next
           end
         end
       end
     end
-
-    @offset_slide = 0.0
-    @is_continue = true
-    @cursor = Cursor.new((PANEL_X - 1) / 2, PANEL_Y / 2)
-    @is_force_sliding = false
-    @score = Score.new
+    return @panels
   end
 
   def make_newline(y)
@@ -213,7 +217,9 @@ class Field
       panel = Panel.new(x, y, rand(0...COLORS))
       left_panel1 = @panels[x - 1][y]
       left_panel2 = @panels[x - 2][y]
-      while x >= 2 && panel.color == left_panel1.color && panel.color == left_panel2.color
+      while x >= 2 &&
+            panel.color == left_panel1.color &&
+            panel.color == left_panel2.color
         panel = Panel.new(x, y, rand(0...COLORS))
       end
       @panels[x][y] = panel
@@ -225,14 +231,10 @@ class Field
   end
 
   def handle_exchange
-    x = @cursor.x
-    y = @cursor.y
-    panel_l = @panels[x][y]
-    panel_r = @panels[x + 1][y]
-    above_panel_l = @panels[x][y + 1]
-    above_panel_r = @panels[x + 1][y + 1]
-    below_panel_l = @panels[x][y - 1]
-    below_panel_r = @panels[x + 1][y - 1]
+    x, y = @cursor.x, @cursor.y
+    above_panel_l, above_panel_r = @panels[x][y + 1], @panels[x + 1][y + 1]
+    panel_l,       panel_r       = @panels[x][y],     @panels[x + 1][y]
+    below_panel_l, below_panel_r = @panels[x][y - 1], @panels[x + 1][y - 1]
 
     # condition of exchange impossible
     return if panel_l && !panel_l.vanishable?
@@ -262,27 +264,30 @@ class Field
     end
 
     @offset_slide += (@is_force_sliding ? 3.0 : 1.0) * SLIDE_SPEED
-
     if @offset_slide >= PANEL_SIZE
       @offset_slide -= PANEL_SIZE
-      (0...PANEL_X).each do |x|
-        PANEL_Y.downto(0) do |y| # need to exec from top
-          panel = @panels[x][y]
-          next unless panel
-          @panels[x][y] = nil
-          panel.y += 1
-          @panels[x][y + 1] = panel
-          panel.lighten
-          @is_force_sliding = false
-          if panel.y == PANEL_Y - 1
-            die
-            break
-          end
+      add_y_by_sliding
+    end
+  end
+
+  def add_y_by_sliding
+    (0...PANEL_X).each do |x|
+      PANEL_Y.downto(0) do |y| # need to exec from top
+        panel = @panels[x][y]
+        next unless panel
+        @panels[x][y] = nil
+        panel.y += 1
+        @panels[x][y + 1] = panel
+        panel.lighten
+        @is_force_sliding = false
+        if panel.y == PANEL_Y - 1
+          die
+          break
         end
       end
-      @cursor.y += 1
-      make_newline(0)
     end
+    @cursor.y += 1
+    make_newline(0)
   end
 
   def vanish_panels
@@ -338,7 +343,9 @@ class Field
         if panel.vanished?
           combo_next = panel.combo + 1
           above_y = y + 1
-          while @panels[x][above_y] && @panels[x][above_y].fixed? && !@panels[x][above_y].to_vanish?
+          while @panels[x][above_y] &&
+                @panels[x][above_y].fixed? &&
+                !@panels[x][above_y].to_vanish?
             above_panel = @panels[x][above_y]
             above_panel.combo = [above_panel.combo, combo_next].max
             above_y += 1
@@ -440,11 +447,11 @@ class Brain
     columns_height = field.calc_columns_height
     return [{ :force_slide => true }] if columns_height.max < PANEL_Y - 4
 
-    targets = balance(columns_height) ||
-              try_vanish(field) ||
-              exchange_random(columns_height)
+    exchanges = balance(columns_height) ||
+                try_vanish(field.panels) ||
+                exchange_random(columns_height)
 
-    return inputs_to_move_and_exchange(field.cursor, targets)
+    return inputs_to_move_and_exchange(field.cursor, exchanges)
   end
 
   def balance(columns_height)
@@ -454,45 +461,38 @@ class Brain
         return { :x => x, :y => two_height.max }
       end
     end
-    return nil
+    return nil # don't have to balance
   end
 
-  def try_vanish(field)
-    panels = field.panels
+  def try_vanish(panels)
     row_existing_color = Array.new(PANEL_Y) { [] }
 
     (1...(PANEL_Y - 2)).each do |y|
-      row_existing_color[y] = (0...PANEL_X).to_a.map { |x| panels[x][y] && panels[x][y].color }.uniq.select { |elem| elem }
+      row_existing_color[y] = (0...PANEL_X).to_a
+                              .map { |x| panels[x][y] && panels[x][y].color }
+                              .uniq.compact
       next if y <= 2
-      three_rows_color = row_existing_color[y] + row_existing_color[y - 1] + row_existing_color[y - 2]
+
+      target_rows = [y - 2, y - 1, y]
       (0...COLORS).each do |color|
-        if three_rows_color.count(color) == 3
-          target_rows = [y - 2, y - 1, y]
-          now_x = target_rows.map do |tmp_y|
+        if target_rows.all? { |_y| row_existing_color[_y].include?(color) }
+          now_x = target_rows.map do |_y|
             (0...PANEL_X).each do |x|
-              break x if panels[x][tmp_y] && panels[x][tmp_y].color == color
+              break x if panels[x][_y] && panels[x][_y].color == color
             end
           end
-          base_x = now_x[2]
-          targets = []
-          (now_x.length - 1).times do |i|
+          target_x = now_x.last
+          exchanges = []
+          now_x.length.times do |i|
             x = now_x[i]
             tmp_y = target_rows[i]
-            if x >= base_x
-              (x - 1).downto(base_x) do |tmp_x|
-                targets.push(:x => tmp_x, :y => tmp_y)
-              end
-            else
-              x.upto(base_x - 1) do |tmp_x|
-                targets.push(:x => tmp_x, :y => tmp_y)
-              end
-            end
+            exchanges += exchanges_to_carry_panel(x, target_x, tmp_y)
           end
-          return targets
+          return exchanges
         end
       end
     end
-    return nil
+    return nil # can't find vanish
   end
 
   def exchange_random(columns_height)
@@ -502,14 +502,28 @@ class Brain
     return { :x => x, :y => y }
   end
 
-  def inputs_to_move_and_exchange(now_cursor, targets)
+  def exchanges_to_carry_panel(now_x, target_x, y)
+    exchanges = []
+    if now_x >= target_x
+      (now_x - 1).downto(target_x) do |x|
+        exchanges.push({ :x => x, :y => y })
+      end
+    else
+      now_x.upto(target_x - 1) do |x|
+        exchanges.push({ :x => x, :y => y })
+      end
+    end
+    return exchanges
+  end
+
+  def inputs_to_move_and_exchange(now_cursor, exchanges)
     inputs = []
     prev = { :x => now_cursor.x, :y => now_cursor.y }
-    targets = [targets] if targets.is_a?(Hash)
+    exchanges = [exchanges] if exchanges.is_a?(Hash)
 
-    targets.each do |target|
-      x_dist = target[:x] - prev[:x]
-      y_dist = target[:y] - prev[:y]
+    exchanges.each do |exchange|
+      x_dist = exchange[:x] - prev[:x]
+      y_dist = exchange[:y] - prev[:y]
       if x_dist > 0
         inputs += [{ :right => true }] * x_dist
       else
@@ -521,7 +535,7 @@ class Brain
         inputs += [{ :down => true }] * (-y_dist)
       end
       inputs += [{ :exchange => true }]
-      prev = target
+      prev = exchange
     end
     return inputs
   end
