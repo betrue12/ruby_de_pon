@@ -172,69 +172,70 @@ class Score
   end
 end
 
-class Field
-  attr_accessor :panels,
-                :cursor,
-                :offset_slide
-
+class Panels < Array
   def initialize
-    @panels = fill_init_panels
-    @offset_slide = 0.0
-    @is_continue = true
-    @cursor = Cursor.new((PANEL_X - 1) / 2, PANEL_Y / 2)
-    @is_force_sliding = false
-    @score = Score.new
+    super(PANEL_X) { Array.new(PANEL_Y) }
+  end
+
+  def vanish_with_aboves_at?(x, y)
+    y > 0 &&
+      y + 2 < PANEL_Y &&
+      self[x][y] &&
+      self[x][y].vanish_with?(self[x][y + 1], self[x][y + 2])
+  end
+
+  def vanish_with_belows_at?(x, y)
+    self.vanish_with_aboves_at?(x, y - 2)
+  end
+
+  def vanish_with_rights_at?(x, y)
+    x >= 0 &&
+      x + 2 < PANEL_X &&
+      self[x][y] &&
+      self[x][y].vanish_with?(self[x + 1][y], self[x + 2][y])
+  end
+
+  def vanish_with_lefts_at?(x, y)
+    self.vanish_with_rights_at?(x - 2, y)
   end
 
   def fill_init_panels
     is_lined_without_vanish = false
     until is_lined_without_vanish
-      @panels = Array.new(PANEL_X) { Array.new(PANEL_Y) }
+      panels = Panels.new
       is_lined_without_vanish = true # tmp
       (0...(PANEL_Y / 2)).each do |y|
-        make_newline(y)
+        panels.make_newline(y)
       end
 
       # check only vertical vanishing,
       # because make_newline checks horizontal vanishing
       (0...PANEL_X).each do |x|
         (1...(PANEL_Y - 2)).each do |y|
-          panel = @panels[x][y]
-          above_panel1 = @panels[x][y + 1]
-          above_panel2 = @panels[x][y + 2]
-          if panel && panel.vanish_with?(above_panel1, above_panel2)
+          if panels.vanish_with_aboves_at?(x, y)
             is_lined_without_vanish = false
             next
           end
         end
       end
     end
-    return @panels
+    return panels
   end
 
   def make_newline(y)
-    (0...PANEL_X).each do |x|
-      panel = Panel.new(x, y, rand(0...COLORS))
-      left_panel1 = @panels[x - 1][y]
-      left_panel2 = @panels[x - 2][y]
-      while x >= 2 &&
-            panel.color == left_panel1.color &&
-            panel.color == left_panel2.color
-        panel = Panel.new(x, y, rand(0...COLORS))
+    (0...PANEL_X).each do |x| # need to exec from left
+      self[x][y] = Panel.new(x, y, rand(0...COLORS))
+      while self.vanish_with_lefts_at?(x, y)
+        self[x][y] = Panel.new(x, y, rand(0...COLORS))
       end
-      @panels[x][y] = panel
     end
   end
 
-  def handle_force_slide
-    @is_force_sliding = true
-  end
-
-  def handle_exchange
-    x, y = @cursor.x, @cursor.y
-    above_panel_l, above_panel_r = @panels[x][y + 1], @panels[x + 1][y + 1]
-    panel_l,       panel_r       = @panels[x][y],     @panels[x + 1][y]
-    below_panel_l, below_panel_r = @panels[x][y - 1], @panels[x + 1][y - 1]
+  def handle_exchange(cursor)
+    x, y = cursor.x, cursor.y
+    above_panel_l, above_panel_r = self[x][y + 1], self[x + 1][y + 1]
+    panel_l,       panel_r       = self[x][y],     self[x + 1][y]
+    below_panel_l, below_panel_r = self[x][y - 1], self[x + 1][y - 1]
 
     # condition of exchange impossible
     return if panel_l && !panel_l.vanishable?
@@ -251,8 +252,82 @@ class Field
       panel_r.unfix unless below_panel_l && below_panel_l.fixed?
     end
 
-    @panels[x][y] = panel_r
-    @panels[x + 1][y] = panel_l
+    self[x][y] = panel_r
+    self[x + 1][y] = panel_l
+  end
+
+  def fall_panels
+    (0...PANEL_X).each do |x|
+      (1...PANEL_Y).each do |y| # need to exec from bottom
+        panel = self[x][y]
+        next if !panel || panel.vanishing?
+
+        if panel.fixed?
+          below_panel = self[x][y - 1]
+          if below_panel && below_panel.fixed?
+            panel.combo = 1
+          else
+            panel.unfix
+          end
+        else
+          panel.offset_y += FALL_SPEED
+
+          if panel.offset_y >= PANEL_SIZE
+            self[x][panel.y] = nil
+            panel.y -= 1
+            self[x][panel.y] = panel
+            panel.offset_y -= PANEL_SIZE
+          end
+
+          below_panel = self[x][panel.y - 1]
+          panel.fix if below_panel && below_panel.fixed?
+        end
+      end
+    end
+  end
+
+  def calc_columns_height
+    columns_height = Array.new(PANEL_X)
+    (0...PANEL_X).each do |x|
+      PANEL_Y.downto(0) do |y|
+        if self[x][y]
+          columns_height[x] = y
+          break
+        end
+      end
+    end
+    return columns_height
+  end
+
+  def draw(offset_slide)
+    (0...PANEL_X).each do |x|
+      (0...PANEL_Y).each do |y|
+        self[x][y].draw(offset_slide) if self[x][y]
+      end
+    end
+  end
+end
+
+class Field
+  attr_accessor :panels,
+                :cursor,
+                :offset_slide
+
+  def initialize
+    @panels = Panels.new.fill_init_panels
+    @offset_slide = 0.0
+    @is_continue = true
+    @cursor = Cursor.new((PANEL_X - 1) / 2, PANEL_Y / 2)
+    @is_force_sliding = false
+    @score = Score.new
+  end
+
+  def handle_force_slide
+    @is_force_sliding = true
+  end
+
+  def handle_exchange
+    @panels.handle_exchange(@cursor)
   end
 
   def slide
@@ -264,6 +339,7 @@ class Field
     end
 
     @offset_slide += (@is_force_sliding ? 3.0 : 1.0) * SLIDE_SPEED
+
     if @offset_slide >= PANEL_SIZE
       @offset_slide -= PANEL_SIZE
       add_y_by_sliding
@@ -287,7 +363,7 @@ class Field
       end
     end
     @cursor.y += 1
-    make_newline(0)
+    @panels.make_newline(0)
   end
 
   def vanish_panels
@@ -361,54 +437,15 @@ class Field
   end
 
   def fall_panels
-    (0...PANEL_X).each do |x|
-      (1...PANEL_Y).each do |y|    # need to exec from bottom
-        panel = @panels[x][y]
-        next if !panel || panel.vanishing?
-
-        if panel.fixed?
-          below_panel = @panels[x][y - 1]
-          if below_panel && below_panel.fixed?
-            panel.combo = 1
-          else
-            panel.unfix
-          end
-        else
-          panel.offset_y += FALL_SPEED
-
-          if panel.offset_y >= PANEL_SIZE
-            @panels[x][panel.y] = nil
-            panel.y -= 1
-            @panels[x][panel.y] = panel
-            panel.offset_y -= PANEL_SIZE
-          end
-
-          below_panel = @panels[x][panel.y - 1]
-          panel.fix if below_panel && below_panel.fixed?
-        end
-      end
-    end
+    @panels.fall_panels
   end
 
   def calc_columns_height
-    columns_height = Array.new(PANEL_X)
-    (0...PANEL_X).each do |x|
-      PANEL_Y.downto(0) do |y|
-        if @panels[x][y]
-          columns_height[x] = y
-          break
-        end
-      end
-    end
-    return columns_height
+    @panels.calc_columns_height
   end
 
   def draw_elements
-    (0...PANEL_X).each do |x|
-      (0...PANEL_Y).each do |y|
-        @panels[x][y].draw(@offset_slide) if @panels[x][y]
-      end
-    end
+    @panels.draw(@offset_slide)
     @cursor.draw(@offset_slide)
     @score.draw
   end
