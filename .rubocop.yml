@@ -4,8 +4,23 @@ Lint/NonLocalExitFromIterator:
 Lint/UnderscorePrefixedVariableName:
   Enabled: false
 
+Metrics/AbcSize:
+  Max: 35
+
+Metrics/ClassLength:
+  Max: 200
+
+Metrics/CyclomaticComplexity:
+  Max: 9
+
 Metrics/MethodLength:
-  Max: 20
+  Max: 25
+
+Metrics/LineLength:
+  Max: 100
+
+Metrics/PerceivedComplexity:
+  Max: 11
 
 Style/BracesAroundHashParameters:
   Enabled: false

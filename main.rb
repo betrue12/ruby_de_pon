@@ -143,11 +143,13 @@ class Score
   end
 
   def combo_bonus(combo)
+    return if combo <= 1
     @score += (combo > 13) ? 0 : 150 * combo - 250
     @messages.push(combo.to_s + ' combo!')
   end
 
   def many_bonus(num)
+    return if num <= 3
     if num < 31
       @score += ((2 * num**2) / 10.0).floor * 10
     elsif num == 31
@@ -225,23 +227,31 @@ class Panels < Array
   def make_newline(y)
     (0...PANEL_X).each do |x| # need to exec from left
       self[x][y] = Panel.new(x, y, rand(0...COLORS))
-      while self.vanish_with_lefts_at?(x, y)
+      next if x < 2
+      while self[x][y].color == self[x - 1][y].color &&
+            self[x][y].color == self[x - 2][y].color
         self[x][y] = Panel.new(x, y, rand(0...COLORS))
       end
     end
   end
 
+  def exchangable_at?(x, y)
+    [self[x][y], self[x + 1][y]].each do |panel|
+      return false if panel && !panel.vanishable?
+    end
+    [self[x][y + 1], self[x + 1][y + 1]].each do |above_panel|
+      return false if above_panel && !above_panel.fixed?
+    end
+
+    return true
+  end
+
   def handle_exchange(cursor)
     x, y = cursor.x, cursor.y
-    above_panel_l, above_panel_r = self[x][y + 1], self[x + 1][y + 1]
+    return unless exchangable_at?(x, y)
+
     panel_l,       panel_r       = self[x][y],     self[x + 1][y]
     below_panel_l, below_panel_r = self[x][y - 1], self[x + 1][y - 1]
-
-    # condition of exchange impossible
-    return if panel_l && !panel_l.vanishable?
-    return if panel_r && !panel_r.vanishable?
-    return if above_panel_l && !above_panel_l.fixed?
-    return if above_panel_r && !above_panel_r.fixed?
 
     if panel_l
       panel_l.x += 1 # to right
@@ -284,6 +294,67 @@ class Panels < Array
         end
       end
     end
+  end
+
+  def prepare_to_vanish(panels)
+    combo = panels.map { |panel| panel.combo }.max
+    panels.each do |panel|
+      panel.combo = combo
+      panel.to_vanish
+    end
+    return combo
+  end
+
+  def exec_vanish
+    vanish_num = 0
+
+    (0...PANEL_X).each do |x|
+      (1...PANEL_Y).each do |y|
+        panel = self[x][y]
+        next unless panel
+
+        if panel.to_vanish?
+          vanish_num += 1 unless panel.vanishing?
+          panel.vanish
+        end
+
+        if panel.vanished?
+          self[x][y] = nil
+          combo_next = panel.combo + 1
+          above_panel = self[x][y + 1]
+          while above_panel && above_panel.fixed? && !above_panel.to_vanish?
+            above_panel.combo = [above_panel.combo, combo_next].max
+            above_panel = self[x][above_panel.y + 1]
+          end
+        end
+      end
+    end
+
+    return vanish_num
+  end
+
+  def vanish_panels
+    max_combo = 1
+
+    (0...PANEL_X).each do |x|
+      (1...PANEL_Y).each do |y|
+        next unless self[x][y] && self[x][y].vanishable?
+
+        if vanish_with_rights_at?(x, y)
+          combo = prepare_to_vanish([self[x][y], self[x + 1][y], self[x + 2][y]])
+          max_combo = [max_combo, combo].max
+        end
+
+        if vanish_with_aboves_at?(x, y)
+          combo = prepare_to_vanish([self[x][y], self[x][y + 1], self[x][y + 2]])
+          max_combo = [max_combo, combo].max
+        end
+      end
+    end
+
+    vanish_num = exec_vanish
+
+    return { :num => vanish_num, :combo => max_combo }
   end
 
   def calc_columns_height
@@ -367,72 +438,10 @@ class Field
   end
 
   def vanish_panels
-    vanish_num_for_score = 0
-    combo_for_score = 1
-
-    (0...PANEL_X).each do |x|
-      (1...PANEL_Y).each do |y|
-        base = @panels[x][y]
-        next unless base && base.vanishable?
-
-        # horizontal
-        if x + 2 < PANEL_X
-          right_panel1 = @panels[x + 1][y]
-          right_panel2 = @panels[x + 2][y]
-          if base.vanish_with?(right_panel1, right_panel2)
-            vanishing_panels = [base, right_panel1, right_panel2]
-            combo = vanishing_panels.map { |panel| panel.combo }.max
-            vanishing_panels.each do |panel|
-              panel.combo = combo
-              panel.to_vanish
-            end
-            combo_for_score = [combo_for_score, combo].max
-          end
-        end
-
-        # vertical
-        if y + 2 < PANEL_Y
-          above_panel1 = @panels[x][y + 1]
-          above_panel2 = @panels[x][y + 2]
-          if base.vanish_with?(above_panel1, above_panel2)
-            vanishing_panels = [base, above_panel1, above_panel2]
-            combo = vanishing_panels.map { |panel| panel.combo }.max
-            vanishing_panels.each do |panel|
-              panel.combo = combo
-              panel.to_vanish
-            end
-            combo_for_score = [combo_for_score, combo].max
-          end
-        end
-      end
-    end
-
-    (0...PANEL_X).each do |x|
-      (1...PANEL_Y).each do |y|
-        panel = @panels[x][y]
-        next unless panel
-        if panel.to_vanish?
-          vanish_num_for_score += 1 unless panel.vanishing?
-          panel.vanish
-        end
-        panel.vanish if panel.to_vanish?
-        if panel.vanished?
-          combo_next = panel.combo + 1
-          above_y = y + 1
-          while @panels[x][above_y] &&
-                @panels[x][above_y].fixed? &&
-                !@panels[x][above_y].to_vanish?
-            above_panel = @panels[x][above_y]
-            above_panel.combo = [above_panel.combo, combo_next].max
-            above_y += 1
-          end
-          @panels[x][y] = nil
-        end
-      end
-    end
-    @score.vanish_score(vanish_num_for_score)
-    @score.combo_bonus(combo_for_score) if combo_for_score > 1
-    @score.many_bonus(vanish_num_for_score) if vanish_num_for_score > 3
+    result = @panels.vanish_panels
+    @score.vanish_score(result[:num])
+    @score.combo_bonus(result[:combo])
+    @score.many_bonus(result[:num])
     @score.age
   end
 
@@ -505,8 +514,7 @@ class Brain
     row_existing_color = Array.new(PANEL_Y) { [] }
 
     (1...(PANEL_Y - 2)).each do |y|
-      row_existing_color[y] = (0...PANEL_X).to_a
-                              .map { |x| panels[x][y] && panels[x][y].color }
+      row_existing_color[y] = (0...PANEL_X).map { |x| panels[x][y] && panels[x][y].color }
                               .uniq.compact
       next if y <= 2
 
@@ -514,17 +522,14 @@ class Brain
       (0...COLORS).each do |color|
         if target_rows.all? { |_y| row_existing_color[_y].include?(color) }
           now_x = target_rows.map do |_y|
-            (0...PANEL_X).each do |x|
-              break x if panels[x][_y] && panels[x][_y].color == color
-            end
+            (0...PANEL_X).select { |x| panels[x][_y] && panels[x][_y].color == color }.sample
           end
-          target_x = now_x.last
+
           exchanges = []
           now_x.length.times do |i|
-            x = now_x[i]
-            tmp_y = target_rows[i]
-            exchanges += exchanges_to_carry_panel(x, target_x, tmp_y)
+            exchanges += exchanges_to_carry_panel(now_x[i], now_x.last, target_rows[i])
           end
+
           return exchanges
         end
       end
