@@ -1,10 +1,28 @@
 require 'dxruby'
 
-PANEL_SIZE = 40
-
+# game size
 PANEL_X = 6
 PANEL_Y = 13 # include line under bottom
 COLORS = 5
+
+# pixel per frame
+SLIDE_SPEED = 0.3
+FALL_SPEED = 3.0
+
+# alpha-value(panel's opacity) decrement per frame
+VANISH_SPEED = 3.0
+
+# frames per COM's one input
+COM_INPUT_CYCLE = 4
+
+# buttons of game pad
+BUTTONS = [P_BUTTON0, P_BUTTON1, P_BUTTON2, P_BUTTON3,
+           P_BUTTON4, P_BUTTON5, P_BUTTON6, P_BUTTON7,
+           P_BUTTON8, P_BUTTON9, P_BUTTON10, P_BUTTON11,
+           P_BUTTON12, P_BUTTON13, P_BUTTON14, P_BUTTON15]
+
+# layout & design
+PANEL_SIZE = 40
 
 FIELD_X = PANEL_X * PANEL_SIZE
 FIELD_Y = (PANEL_Y - 1) * PANEL_SIZE
@@ -12,21 +30,20 @@ FIELD_Y = (PANEL_Y - 1) * PANEL_SIZE
 WINDOW_X = FIELD_X + 200
 WINDOW_Y = FIELD_Y
 
-# pixel per second
-SLIDE_SPEED = 0.3
-FALL_SPEED = 3.0
+MONO_FONT = Font.new(20, 'Consolas')
+TITLE_FONT = Font.new(28, 'Georgia', :italic => true)
 
-# alpha-value per second
-VANISH_SPEED = 3.0
+TITLE_X = (WINDOW_X - TITLE_FONT.get_width('Ruby de Pon!')) / 2
+TITLE_Y = 100
 
-# seconds for COM's one input
-COM_INPUT_CYCLE = 3
+TITLE_NAVI_X = 100
+TITLE_NAVI_Y = 200
 
-# buttons of game pad
-BUTTONS = [P_BUTTON0, P_BUTTON1, P_BUTTON2, P_BUTTON3,
-           P_BUTTON4, P_BUTTON5, P_BUTTON6, P_BUTTON7,
-           P_BUTTON8, P_BUTTON9, P_BUTTON10, P_BUTTON11,
-           P_BUTTON12, P_BUTTON13, P_BUTTON14, P_BUTTON15]
+SCORE_X = FIELD_X + 40
+SCORE_Y = 100
+
+GAMEOVER_X = 10
+GAMEOVER_Y = 100
 
 class Panel
   attr_accessor :x,
@@ -50,6 +67,10 @@ class Panel
 
   def lighten
     @alpha = 255.0
+  end
+
+  def darken
+    @alpha = 128.0
   end
 
   def draw(offset_slide)
@@ -135,7 +156,6 @@ class Score
     @score = 0
     @messages = []
     @del_message_count = 1
-    @font = Font.new(16)
   end
 
   def vanish_score(num)
@@ -162,7 +182,8 @@ class Score
 
   def age
     @del_message_count = (@del_message_count + 1) % (60 * 5)
-    @messages.delete_at(0) if @messages if @del_message_count == 0
+    @messages.delete_at(0) if @messages.length > 10 ||
+                              (@messages.length == 0 && @del_message_count == 0)
   end
 
   def draw
@@ -170,7 +191,7 @@ class Score
     @messages.each do |message|
       str += message + "\n"
     end
-    Window.draw_font(FIELD_X + 40, 80, str, @font)
+    Window.draw_font(SCORE_X, SCORE_Y, str, MONO_FONT)
   end
 end
 
@@ -377,6 +398,14 @@ class Panels < Array
       end
     end
   end
+
+  def darken
+    (0...PANEL_X).each do |x|
+      (0...PANEL_Y).each do |y|
+        self[x][y].darken if self[x][y]
+      end
+    end
+  end
 end
 
 class Field
@@ -427,10 +456,7 @@ class Field
         @panels[x][y + 1] = panel
         panel.lighten
         @is_force_sliding = false
-        if panel.y == PANEL_Y - 1
-          die
-          break
-        end
+        die if panel.y == PANEL_Y - 1
       end
     end
     @cursor.y += 1
@@ -454,6 +480,8 @@ class Field
   end
 
   def draw_elements
+    @panels.darken unless continue?
+
     @panels.draw(@offset_slide)
     @cursor.draw(@offset_slide)
     @score.draw
@@ -587,19 +615,19 @@ module Mode
   module_function # use all funtions in Window.loop
 
   def select
-    font = Font.new(16)
-    message = "Ruby de Pon!\n" +
-              "\n" +
-              "*Keyboard*\n" +
-              "Push SPACE to start game\n" +
-              "SPACE => exchange panel\n" +
-              "Z => slide up fast\n" +
-              "Array key => move cursor\n" +
-              "\n" +
-              "*Game pad*\n" +
-              "Push any button of pad\n" +
-              'for button config, and then start'
-    Window.draw_font(10, 100, message, font)
+    title = 'Ruby de Pon!'
+    navi = "*Keyboard*\n" +
+           "Push SPACE to start game\n" +
+           "Push Z to watch demo play\n" +
+           "SPACE     => exchange panel\n" +
+           "Z         => slide up fast\n" +
+           "Array key => move cursor\n" +
+           "\n" +
+           "*Game pad*\n" +
+           "Push any button of pad\n" +
+           'for button config, and then start'
+    Window.draw_font(TITLE_X, TITLE_Y, title, TITLE_FONT)
+    Window.draw_font(TITLE_NAVI_X, TITLE_NAVI_Y, navi, MONO_FONT)
 
     return 'main' if Input.key_push?(K_SPACE)
     return 'demo' if Input.key_push?(K_Z)
@@ -612,10 +640,9 @@ module Mode
   end
 
   def pad_config(step)
-    font = Font.new(16)
     case step
     when 0
-      Window.draw_font(10, 100, 'Push button for exchange panels', font)
+      Window.draw_font(TITLE_NAVI_X, TITLE_NAVI_Y, 'Push button for exchange panels', MONO_FONT)
       BUTTONS.each do |button|
         if Input.pad_push?(button)
           Input.set_config(button, K_SPACE)
@@ -623,7 +650,7 @@ module Mode
         end
       end
     when 1
-      Window.draw_font(10, 100, 'Push button for slide up fast', font)
+      Window.draw_font(TITLE_NAVI_X, TITLE_NAVI_Y, 'Push button for slide up fast', MONO_FONT)
       BUTTONS.each do |button|
         if Input.pad_push?(button)
           Input.set_config(button, K_Z)
@@ -664,13 +691,13 @@ module Mode
     return (field.continue?) ? nil : 'game_over'
   end
 
-  def game_over
+  def game_over(field)
     message = "*Game Over*\n" +
               "\n" +
               "push SPACE or exchange button\n" +
               'for start game again'
-    font = Font.new(16)
-    Window.draw_font(10, 100, message, font)
+    Window.draw_font(GAMEOVER_X, GAMEOVER_Y, message, MONO_FONT, :z => 1)
+    field.draw_elements
     return Input.key_push?(K_SPACE) ? 'main' : 'game_over'
   end
 end
@@ -703,7 +730,7 @@ Window.loop do
     mode = Mode.demo(field, brain) || mode
 
   when 'game_over'
-    mode = Mode.game_over || mode
+    mode = Mode.game_over(field) || mode
     field = Field.new if mode == 'main'
   end
 end
