@@ -18,10 +18,11 @@ Rubyと[DXRuby](http://dxruby.sourceforge.jp/)を使って書かれています�
 
 以下のものが必要です。
 
-* Windows2000以降
-* Ruby 2.1.5 (32bit版)
+* Windows OS
+* Ruby 2.0.0 または 2.1.x系 (32bit版)
+  * 2.1.6を推奨します。
 * [DXRuby](http://dxruby.sourceforge.jp/) Rubyのバージョンに合ったものをお使いください。
-* DirectX 9.0c以降
+* DirectX
 
 ## 起動までの手順
 

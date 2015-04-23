@@ -17,10 +17,11 @@ There is also [Japanese README](README_ja.md).
 
 ## Requirement
 
-* Windows2000 or later
-* Ruby 2.1.5 (32bit)
+* Windows OS
+* Ruby 2.0.0 or 2.1.x (32bit)
+  * 2.1.6 is recommended.
 * [DXRuby](http://dxruby.sourceforge.jp/) corresponding to Ruby version
-* DirectX 9.0c or later
+* DirectX
 
 ## How to Start
 
