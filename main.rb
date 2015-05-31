@@ -424,7 +424,7 @@ class Field
     @cursor = Cursor.new((PANEL_X - 1) / 2, PANEL_Y / 2)
     @is_force_sliding = false
     @score = Score.new
-    @field_offset = {:x => x, :y => y}
+    @field_offset = { :x => x, :y => y }
   end
 
   def handle_force_slide
@@ -617,7 +617,6 @@ class Brain
 end
 
 module Mode
-
   module_function # use all funtions in Window.loop
 
   def decided?
@@ -682,13 +681,12 @@ module Mode
         end
       end
     when 2
-      BUTTONS.each do |button|
-        if decided?
-          Input.set_config(BUTTONS[btn_assign[0]], K_SPACE)
-          Input.set_config(BUTTONS[btn_assign[1]], K_Z)
-          next_mode = 'select'
-          break
-        end
+      if decided?
+        Input.set_config(nil, K_SPACE) # clean-up
+        Input.set_config(nil, K_Z)     # clean-up
+        Input.set_config(BUTTONS[btn_assign[0]], K_SPACE)
+        Input.set_config(BUTTONS[btn_assign[1]], K_Z)
+        next_mode = 'select'
       end
     end
 
@@ -793,9 +791,9 @@ enemy_field = Field.new(FIELD_X + 200, 0)
 result = nil
 
 mode = 'select'
-conf_value = {:cursor_mode   => 0,
-              :cursor_config => 0,
-              :btn_assign    => [0, 1] }
+conf_value = { :cursor_mode   => 0,
+               :cursor_config => 0,
+               :btn_assign    => [0, 1] }
 
 Window.loop do
   break if Input.key_push?(K_ESCAPE)
