@@ -27,16 +27,17 @@ PANEL_SIZE = 40
 FIELD_X = PANEL_X * PANEL_SIZE
 FIELD_Y = (PANEL_Y - 1) * PANEL_SIZE
 
-WINDOW_X = FIELD_X + 200
+WINDOW_X = (FIELD_X + 200) * 2
 WINDOW_Y = FIELD_Y
 
 MONO_FONT = Font.new(20, 'Consolas')
 TITLE_FONT = Font.new(28, 'Georgia', :italic => true)
 
+TITLE = 'Ruby de Pon!'
 TITLE_X = (WINDOW_X - TITLE_FONT.get_width('Ruby de Pon!')) / 2
 TITLE_Y = 100
 
-TITLE_NAVI_X = 100
+TITLE_NAVI_X = TITLE_X
 TITLE_NAVI_Y = 200
 
 SCORE_X = FIELD_X + 40
@@ -44,6 +45,9 @@ SCORE_Y = 100
 
 GAMEOVER_X = 10
 GAMEOVER_Y = 100
+
+MODE_LIST = ['main', 'vs', 'demo', 'config']
+CONFIG_LIST = ['Gamepad exchange', 'Gamepad slide-up', 'end']
 
 class Panel
   attr_accessor :x,
@@ -73,9 +77,9 @@ class Panel
     @alpha = 128.0
   end
 
-  def draw(offset_slide)
-    axis_x = @x * PANEL_SIZE
-    axis_y = WINDOW_Y - y * PANEL_SIZE + @offset_y.floor - offset_slide.floor
+  def draw(offset_slide, field_offset)
+    axis_x = @x * PANEL_SIZE + field_offset[:x]
+    axis_y = WINDOW_Y - y * PANEL_SIZE + @offset_y.floor - offset_slide.floor + field_offset[:y]
     Window.draw_alpha(axis_x, axis_y, @image, @alpha.floor)
   end
 
@@ -144,9 +148,9 @@ class Cursor
     @x -= 1 if input_hash[:left] && @x > 0
   end
 
-  def draw(offset_slide)
-    axis_x = @x * PANEL_SIZE
-    axis_y = WINDOW_Y - y * PANEL_SIZE - offset_slide.floor
+  def draw(offset_slide, field_offset)
+    axis_x = @x * PANEL_SIZE + field_offset[:x]
+    axis_y = WINDOW_Y - y * PANEL_SIZE - offset_slide.floor + field_offset[:y]
     Window.draw(axis_x, axis_y, @image)
   end
 end
@@ -186,12 +190,12 @@ class Score
                               (@messages.length == 0 && @del_message_count == 0)
   end
 
-  def draw
+  def draw(field_offset)
     str = 'Score: ' + @score.to_s + "\n\n"
     @messages.each do |message|
       str += message + "\n"
     end
-    Window.draw_font(SCORE_X, SCORE_Y, str, MONO_FONT)
+    Window.draw_font(SCORE_X + field_offset[:x], SCORE_Y + field_offset[:y], str, MONO_FONT)
   end
 end
 
@@ -391,10 +395,10 @@ class Panels < Array
     return columns_height
   end
 
-  def draw(offset_slide)
+  def draw(offset_slide, field_offset)
     (0...PANEL_X).each do |x|
       (0...PANEL_Y).each do |y|
-        self[x][y].draw(offset_slide) if self[x][y]
+        self[x][y].draw(offset_slide, field_offset) if self[x][y]
       end
     end
   end
@@ -413,13 +417,14 @@ class Field
                 :cursor,
                 :offset_slide
 
-  def initialize
+  def initialize(x, y)
     @panels = Panels.new.fill_init_panels
     @offset_slide = 0.0
     @is_continue = true
     @cursor = Cursor.new((PANEL_X - 1) / 2, PANEL_Y / 2)
     @is_force_sliding = false
     @score = Score.new
+    @field_offset = {:x => x, :y => y}
   end
 
   def handle_force_slide
@@ -459,7 +464,7 @@ class Field
         die if panel.y == PANEL_Y - 1
       end
     end
-    @cursor.y += 1
+    @cursor.y += 1 if @cursor.y < PANEL_Y - 1
     @panels.make_newline(0)
   end
 
@@ -482,9 +487,9 @@ class Field
   def draw_elements
     @panels.darken unless continue?
 
-    @panels.draw(@offset_slide)
-    @cursor.draw(@offset_slide)
-    @score.draw
+    @panels.draw(@offset_slide, @field_offset)
+    @cursor.draw(@offset_slide, @field_offset)
+    @score.draw(@field_offset)
   end
 
   def die
@@ -612,53 +617,93 @@ class Brain
 end
 
 module Mode
+
   module_function # use all funtions in Window.loop
 
-  def select
-    title = 'Ruby de Pon!'
-    navi = "*Keyboard*\n" +
-           "Push SPACE to start game\n" +
-           "Push Z to watch demo play\n" +
-           "SPACE     => exchange panel\n" +
-           "Z         => slide up fast\n" +
-           "Array key => move cursor\n" +
-           "\n" +
-           "*Game pad*\n" +
-           "Push any button of pad\n" +
-           'for button config, and then start'
-    Window.draw_font(TITLE_X, TITLE_Y, title, TITLE_FONT)
-    Window.draw_font(TITLE_NAVI_X, TITLE_NAVI_Y, navi, MONO_FONT)
-
-    return 'main' if Input.key_push?(K_SPACE)
-    return 'demo' if Input.key_push?(K_Z)
-
+  def decided?
+    return true if Input.key_push?(K_SPACE)
     BUTTONS.each do |button|
-      return 'pad_config' if Input.pad_push?(button)
+      return true if Input.pad_push?(button)
     end
-
-    return 'select'
+    return false
   end
 
-  def pad_config(step)
-    case step
+  def select(conf_value)
+    Window.draw_font(TITLE_X, TITLE_Y, TITLE, TITLE_FONT)
+
+    cursor = conf_value[:cursor_mode]
+
+    next_mode = decided? ? MODE_LIST[cursor] : 'select'
+    if Input.key_push?(K_UP)
+      cursor = [cursor - 1, 0].max
+    elsif Input.key_push?(K_DOWN)
+      cursor = [cursor + 1, MODE_LIST.length - 1].min
+    end
+
+    str = ''
+    MODE_LIST.length.times do |i|
+      str += cursor == i ? '+ ' : '  '
+      str += MODE_LIST[i] + "\n"
+    end
+
+    Window.draw_font(TITLE_NAVI_X, TITLE_NAVI_Y, str, MONO_FONT)
+
+    conf_value[:cursor_mode] = cursor
+    return next_mode
+  end
+
+  def config(conf_value)
+    Window.draw_font(TITLE_X, TITLE_Y, TITLE, TITLE_FONT)
+
+    cursor = conf_value[:cursor_config]
+    btn_assign = conf_value[:btn_assign]
+
+    if Input.key_push?(K_UP)
+      cursor = [cursor - 1, 0].max
+    elsif Input.key_push?(K_DOWN)
+      cursor = [cursor + 1, CONFIG_LIST.length - 1].min
+    end
+
+    next_mode = 'config' # if not changed
+
+    case cursor
     when 0
-      Window.draw_font(TITLE_NAVI_X, TITLE_NAVI_Y, 'Push button for exchange panels', MONO_FONT)
-      BUTTONS.each do |button|
-        if Input.pad_push?(button)
-          Input.set_config(button, K_SPACE)
-          return step + 1
+      BUTTONS.length.times do |i|
+        if Input.pad_push?(BUTTONS[i])
+          btn_assign[1] = btn_assign[0] if i == btn_assign[1]
+          btn_assign[0] = i
         end
       end
     when 1
-      Window.draw_font(TITLE_NAVI_X, TITLE_NAVI_Y, 'Push button for slide up fast', MONO_FONT)
+      BUTTONS.length.times do |i|
+        if Input.pad_push?(BUTTONS[i])
+          btn_assign[0] = btn_assign[1] if i == btn_assign[0]
+          btn_assign[1] = i
+        end
+      end
+    when 2
       BUTTONS.each do |button|
-        if Input.pad_push?(button)
-          Input.set_config(button, K_Z)
-          return step + 1
+        if decided?
+          Input.set_config(BUTTONS[btn_assign[0]], K_SPACE)
+          Input.set_config(BUTTONS[btn_assign[1]], K_Z)
+          next_mode = 'select'
+          break
         end
       end
     end
-    return step
+
+    str = ''
+    CONFIG_LIST.length.times do |i|
+      str += cursor == i ? '+ ' : '  '
+      str += CONFIG_LIST[i]
+      str += ' = BUTTON ' + btn_assign[i].to_s if btn_assign[i]
+      str += "\n"
+    end
+
+    Window.draw_font(TITLE_NAVI_X, TITLE_NAVI_Y, str, MONO_FONT)
+
+    conf_value[:cursor_config] = cursor
+    return next_mode
   end
 
   def main(field)
@@ -668,14 +713,37 @@ module Mode
                    :left        => Input.key_push?(K_LEFT),
                    :exchange    => Input.key_push?(K_SPACE),
                    :force_slide => Input.key_down?(K_Z)      }
-    next_mode = play(field, input_hash)
-    return next_mode
+    status = play(field, input_hash)
+    return (status == 'dead') ? 'game_over' : 'main'
   end
 
   def demo(field, brain)
     input_hash = brain.dequeue_input(field) || {}
-    next_mode = play(field, input_hash)
-    return next_mode
+    status = play(field, input_hash)
+    return (status == 'dead') ? 'game_over' : 'demo'
+  end
+
+  def vs(field, enemy_field, brain, result)
+    input_hash = { :up          => Input.key_push?(K_UP),
+                   :down        => Input.key_push?(K_DOWN),
+                   :right       => Input.key_push?(K_RIGHT),
+                   :left        => Input.key_push?(K_LEFT),
+                   :exchange    => Input.key_push?(K_SPACE),
+                   :force_slide => Input.key_down?(K_Z)      }
+    my_status = play(field, input_hash)
+    if my_status == 'dead'
+      result = 'lose'
+      return 'vs_finish'
+    end
+
+    input_hash = brain.dequeue_input(enemy_field) || {}
+    enemy_status = play(enemy_field, input_hash)
+    if enemy_status == 'dead'
+      result = 'win'
+      return 'vs_finish'
+    end
+
+    return 'vs'
   end
 
   def play(field, input_hash)
@@ -688,17 +756,30 @@ module Mode
 
     field.draw_elements
 
-    return (field.continue?) ? nil : 'game_over'
+    return (field.continue?) ? 'live' : 'dead'
   end
 
   def game_over(field)
     message = "*Game Over*\n" +
               "\n" +
-              "push SPACE or exchange button\n" +
+              "push SPACE or\n" +
+              "any Gamepad button\n" +
               'for start game again'
     Window.draw_font(GAMEOVER_X, GAMEOVER_Y, message, MONO_FONT, :z => 1)
     field.draw_elements
-    return Input.key_push?(K_SPACE) ? 'main' : 'game_over'
+    return decided? ? 'select' : 'game_over'
+  end
+
+  def vs_finish(field, enemy_field, result)
+    message = (result == 'win') ? "You win!\n" : "You lose...\n" +
+              "\n" +
+              "push SPACE or \n" +
+              "any Gamepad button\n" +
+              'for start game again'
+    Window.draw_font(GAMEOVER_X, GAMEOVER_Y, message, MONO_FONT, :z => 1)
+    field.draw_elements
+    enemy_field.draw_elements
+    return decided? ? 'select' : 'vs_finish'
   end
 end
 
@@ -706,31 +787,46 @@ Window.width = WINDOW_X
 Window.height = WINDOW_Y
 # Window.fps = 20 # for debug
 
-field = Field.new
+field = Field.new(0, 0)
 brain = Brain.new
+enemy_field = Field.new(FIELD_X + 200, 0)
+result = nil
 
 mode = 'select'
-conf_step = 0
+conf_value = {:cursor_mode   => 0,
+              :cursor_config => 0,
+              :btn_assign    => [0, 1] }
 
 Window.loop do
   break if Input.key_push?(K_ESCAPE)
 
   case mode
   when 'select'
-    mode = Mode.select || mode
-
-  when 'pad_config'
-    conf_step = Mode.pad_config(conf_step)
-    mode = 'main' if conf_step == 2
+    mode = Mode.select(conf_value)
 
   when 'main'
-    mode = Mode.main(field) || mode
-
-  when 'demo'
-    mode = Mode.demo(field, brain) || mode
+    mode = Mode.main(field)
 
   when 'game_over'
-    mode = Mode.game_over(field) || mode
-    field = Field.new if mode == 'main'
+    mode = Mode.game_over(field)
+    field = Field.new(0, 0) if mode == 'select'
+
+  when 'vs'
+    mode = Mode.vs(field, enemy_field, brain, result)
+
+  when 'vs_finish'
+    mode = Mode.vs_finish(field, enemy_field, result)
+    if mode == 'select'
+      field = Field.new(0, 0)
+      brain = Brain.new
+      enemy_field = Field.new(FIELD_X + 200, 0)
+      result = nil
+    end
+
+  when 'demo'
+    mode = Mode.demo(field, brain)
+
+  when 'config'
+    mode = Mode.config(conf_value)
   end
 end
